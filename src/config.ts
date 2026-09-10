@@ -30,7 +30,7 @@ const nimApiKeys = [env.NIM_API_KEY_1 ?? env.NIM_API_KEY, env.NIM_API_KEY_2]
 
 export const config = {
   ...env,
-  GITHUB_PRIVATE_KEY: env.GITHUB_PRIVATE_KEY.replaceAll("\\n", "\n"),
+  GITHUB_PRIVATE_KEY: env.GITHUB_PRIVATE_KEY.replaceAll(String.raw`\n`, "\n"),
   NIM_API_KEYS: nimApiKeys,
   CODERABBIT_LOGINS: env.CODERABBIT_LOGINS.split(",").map((v: string) => v.trim().toLowerCase()).filter(Boolean),
   SONAR_IDENTIFIERS: env.SONAR_IDENTIFIERS.split(",").map((v: string) => v.trim().toLowerCase()).filter(Boolean)
