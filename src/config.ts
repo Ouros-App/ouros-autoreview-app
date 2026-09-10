@@ -18,8 +18,8 @@ const schema = z.object({
   COMMAND: z.string().default("/auto-review"),
   CODERABBIT_LOGINS: z.string().default("coderabbitai,coderabbitai[bot]"),
   SONAR_IDENTIFIERS: z.string().default("sonar,sonarqube,sonarcloud")
-}).superRefine((env: { GROQ_API_KEY_1?: string; NIM_API_KEY_1?: string; NIM_API_KEY?: string }, ctx: z.RefinementCtx) => {
-  if (!env.GROQ_API_KEY_1 && !env.NIM_API_KEY_1 && !env.NIM_API_KEY) {
+}).superRefine((env: { GROQ_API_KEY_1?: string; GROQ_API_KEY_2?: string; NIM_API_KEY_1?: string; NIM_API_KEY_2?: string; NIM_API_KEY?: string }, ctx: z.RefinementCtx) => {
+  if (!env.GROQ_API_KEY_1 && !env.GROQ_API_KEY_2 && !env.NIM_API_KEY_1 && !env.NIM_API_KEY_2 && !env.NIM_API_KEY) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["GROQ_API_KEY_1"], message: "Set GROQ_API_KEY_1 or a legacy NIM_API_KEY_1/NIM_API_KEY" });
   }
 });
