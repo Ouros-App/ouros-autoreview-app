@@ -10,6 +10,7 @@ import {
 import { reviewDiff } from "./nim.js";
 import type { PullContext } from "./types.js";
 
+/** Formats the decision and gate results for a pull-request comment or review. */
 function formatResult(args: { approved: boolean; score?: number; summary?: string; blockers: string[]; warnings: string[]; sha: string; }) {
   const { approved, score, summary, blockers, warnings, sha } = args;
   const lines = [
@@ -25,6 +26,7 @@ function formatResult(args: { approved: boolean; score?: number; summary?: strin
   return lines.join("\n");
 }
 
+/** Runs all approval gates and publishes either an approval or blocking comment. */
 export async function runAutoReview(ctx: PullContext) {
   const octokit = await installationOctokit(ctx.installationId);
   const { pull, diff } = await getPullAndDiff(octokit, ctx);

@@ -4,6 +4,7 @@ import { Octokit } from "@octokit/rest";
 import { config } from "./config.js";
 import type { GateResult, PullContext } from "./types.js";
 
+/** Validates a GitHub webhook HMAC signature against the raw request body. */
 export function verifyWebhookSignature(rawBody: Buffer, signature?: string): boolean {
   if (!signature?.startsWith("sha256=")) return false;
   const expected = `sha256=${crypto.createHmac("sha256", config.GITHUB_WEBHOOK_SECRET).update(rawBody).digest("hex")}`;
@@ -12,6 +13,7 @@ export function verifyWebhookSignature(rawBody: Buffer, signature?: string): boo
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/** Creates an Octokit client authenticated as the GitHub App installation. */
 export async function installationOctokit(installationId: number): Promise<Octokit> {
   const auth = createAppAuth({
     appId: config.GITHUB_APP_ID,
@@ -22,11 +24,13 @@ export async function installationOctokit(installationId: number): Promise<Octok
   return new Octokit({ auth: token });
 }
 
+/** Checks whether a user has write-capable repository permission. */
 export async function canRunAutoReview(octokit: Octokit, owner: string, repo: string, login: string): Promise<boolean> {
   const { data } = await octokit.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
   return ["admin", "maintain", "push"].includes(data.permission);
 }
 
+/** Loads the pull request metadata and current diff. */
 export async function getPullAndDiff(octokit: Octokit, ctx: PullContext) {
   const { data: pull } = await octokit.pulls.get({
     owner: ctx.owner,
@@ -44,6 +48,7 @@ export async function getPullAndDiff(octokit: Octokit, ctx: PullContext) {
   return { pull, diff: String(diffResponse.data) };
 }
 
+/** Evaluates commit statuses and check runs, including Sonar checks. */
 export async function checkCiAndSonar(octokit: Octokit, ctx: PullContext, sha: string): Promise<GateResult> {
   const blockers: string[] = [];
   const warnings: string[] = [];
@@ -86,6 +91,7 @@ export async function checkCiAndSonar(octokit: Octokit, ctx: PullContext, sha: s
   return { ok: blockers.length === 0, blockers, warnings };
 }
 
+/** Evaluates review states and unresolved CodeRabbit or Sonar threads. */
 export async function checkReviewsAndThreads(octokit: Octokit, ctx: PullContext): Promise<GateResult> {
   const blockers: string[] = [];
   const warnings: string[] = [];
@@ -157,6 +163,7 @@ export async function checkReviewsAndThreads(octokit: Octokit, ctx: PullContext)
   return { ok: blockers.length === 0, blockers, warnings };
 }
 
+/** Submits an approval review for the reviewed commit. */
 export async function createApproval(octokit: Octokit, ctx: PullContext, sha: string, body: string) {
   return octokit.pulls.createReview({
     owner: ctx.owner,
@@ -168,6 +175,7 @@ export async function createApproval(octokit: Octokit, ctx: PullContext, sha: st
   });
 }
 
+/** Posts a blocking result comment on the pull request. */
 export async function createComment(octokit: Octokit, ctx: PullContext, body: string) {
   return octokit.issues.createComment({
     owner: ctx.owner,

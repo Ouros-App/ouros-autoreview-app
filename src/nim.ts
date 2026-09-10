@@ -14,19 +14,26 @@ const reviewSchema = z.object({
   })).max(100)
 });
 
+/** Extracts and validates the structured review object returned by NIM. */
 function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1] ?? text;
+  const fenceStart = text.indexOf("```");
+  const contentStart = fenceStart >= 0 ? text.indexOf("\n", fenceStart) : -1;
+  const fenceEnd = contentStart >= 0 ? text.indexOf("```", contentStart + 1) : -1;
+  const candidate = contentStart >= 0 && fenceEnd > contentStart
+    ? text.slice(contentStart + 1, fenceEnd)
+    : text;
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("NIM response did not contain a JSON object");
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
+/** Identifies HTTP statuses that should trigger the next NIM credential. */
 function shouldFailOver(status: number): boolean {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
 
+/** Sends one review request to NIM with a bounded timeout. */
 async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.NIM_TIMEOUT_MS);
@@ -45,6 +52,7 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): 
   }
 }
 
+/** Reviews a pull-request diff and returns the validated NIM result. */
 export async function reviewDiff(diff: string): Promise<NimReview> {
   const maxChars = 120_000;
   const clipped = diff.length > maxChars ? `${diff.slice(0, maxChars)}\n\n[DIFF TRUNCATED]` : diff;

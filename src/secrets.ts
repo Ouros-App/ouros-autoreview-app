@@ -1,5 +1,6 @@
 import { InfisicalSDK } from "@infisical/sdk";
 
+/** Loads Infisical secrets into the process environment before configuration parsing. */
 export async function loadSecrets(): Promise<void> {
   const clientId = process.env.INFISICAL_CLIENT_ID;
   const clientSecret = process.env.INFISICAL_CLIENT_SECRET;

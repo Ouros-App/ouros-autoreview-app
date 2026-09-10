@@ -70,7 +70,7 @@ Docker:
 
 ```bash
 docker build -t ouros-auto-approver .
-docker run --env-file .env -p 3000:3000 ouros-auto-approver
+docker run --env-file .env -p 8080:8080 ouros-auto-approver
 ```
 
 Use it by commenting on a PR:

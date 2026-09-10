@@ -8,6 +8,7 @@ const { canRunAutoReview, installationOctokit, verifyWebhookSignature } = await 
 const { runAutoReview } = await import("./review.js");
 
 const app = express();
+app.disable("x-powered-by");
 app.use(express.raw({ type: "application/json", limit: "2mb" }));
 app.get("/health", (_req, res) => res.status(200).json({ ok: true }));
 
