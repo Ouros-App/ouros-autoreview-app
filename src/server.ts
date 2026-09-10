@@ -50,6 +50,8 @@ app.post("/webhooks/github", async (req, res) => {
     return res.status(403).json({ error: "comment author permission could not be verified" });
   }
 
+  res.status(202).json({ accepted: true });
+
   try {
     await createComment(
       octokit,
@@ -60,7 +62,6 @@ app.post("/webhooks/github", async (req, res) => {
     console.error("review start comment failed", { ctx, error });
   }
 
-  res.status(202).json({ accepted: true });
   try { await runAutoReview(ctx); }
   catch (error) { console.error("auto-review failed", { ctx, error }); }
 });
