@@ -9,8 +9,8 @@ Organization-wide GitHub App that reacts to `/auto-review` on pull requests and 
 3. Sonar/Quality Gate is green.
 4. No active `CHANGES_REQUESTED` review.
 5. No unresolved CodeRabbit or Sonar review thread.
-6. NVIDIA NIM score is at least `MIN_SCORE` (default 85).
-7. NIM reports no HIGH/CRITICAL findings.
+6. AI review score is at least `MIN_SCORE` (default 85).
+7. AI review reports no HIGH/CRITICAL findings.
 8. The reviewed head SHA is still current before approval.
 
 If all gates pass, the GitHub App submits an `APPROVE` review anchored to the reviewed commit. Otherwise it posts a blocking summary comment.
@@ -30,18 +30,18 @@ Subscribe to the **Issue comment** event and point the webhook to:
 https://your-domain.example/webhooks/github
 ```
 
-## NVIDIA NIM failover
+## Groq failover
 
-The project calls the OpenAI-compatible NIM endpoint at `{NIM_BASE_URL}/chat/completions`.
+The project uses Groq by default through its OpenAI-compatible endpoint at `{NIM_BASE_URL}/chat/completions`.
 
-Configure two independent NVIDIA API keys:
+Configure two independent Groq API keys:
 
 ```env
-NIM_API_KEY_1=nvapi-primary-...
-NIM_API_KEY_2=nvapi-fallback-...
+GROQ_API_KEY_1=gsk-primary-...
+GROQ_API_KEY_2=gsk-fallback-...
 ```
 
-The bot tries key #1 first. It automatically switches to key #2 if the first request gets `429`, `401/403`, `408`, a `5xx`, a timeout, or a network failure. A successful request is not duplicated. `NIM_API_KEY` is still accepted as a legacy alias for key #1.
+The bot sends both keys in parallel, returns the first valid review and cancels the other request. `NIM_API_KEY_1`, `NIM_API_KEY_2` and `NIM_API_KEY` remain accepted as legacy aliases.
 
 ## Infisical
 
@@ -56,7 +56,7 @@ INFISICAL_ENVIRONMENT=prod
 INFISICAL_SECRET_PATH=/
 ```
 
-Store the GitHub and NVIDIA variables as secrets in the selected Infisical project/environment. For local development, omit the Infisical variables and fill `.env` directly.
+Store the GitHub and Groq variables as secrets in the selected Infisical project/environment. For local development, omit the Infisical variables and fill `.env` directly.
 
 ## Run
 
