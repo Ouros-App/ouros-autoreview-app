@@ -29,11 +29,6 @@ function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-/** Identifies HTTP statuses that should trigger the next NIM credential. */
-function shouldFailOver(status: number): boolean {
-  return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
-}
-
 /** Sends one review request to NIM with a bounded timeout. */
 async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
   const controller = new AbortController();
@@ -57,16 +52,15 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, p
   }
 }
 
-type Attempt = { review?: NimReview; error?: string; retry: boolean };
+type Attempt = { review?: NimReview; error?: string };
 
-/** Performs one NIM attempt and reports whether the next key should be used. */
-async function attemptReview(apiKey: string, body: unknown, keyIndex: number, hasFallback: boolean, signal: AbortSignal): Promise<Attempt> {
+/** Performs one NIM attempt and reports its review or error. */
+async function attemptReview(apiKey: string, body: unknown, keyIndex: number, signal: AbortSignal): Promise<Attempt> {
   const response = await requestWithKey(apiKey, body, keyIndex, signal);
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1000);
     return {
-      error: `NIM key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`,
-      retry: hasFallback && shouldFailOver(response.status)
+      error: `NIM key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`
     };
   }
 
@@ -74,7 +68,7 @@ async function attemptReview(apiKey: string, body: unknown, keyIndex: number, ha
   const text = (payload as { choices?: Array<{ message?: { content?: unknown } }> })
     .choices?.[0]?.message?.content;
   if (typeof text !== "string") throw new Error(`Unexpected NIM response shape from key #${keyIndex + 1}`);
-  return { review: reviewSchema.parse(extractJson(text)), retry: false };
+  return { review: reviewSchema.parse(extractJson(text)) };
 }
 
 /** Reviews a pull-request diff and returns the validated NIM result. */
@@ -108,9 +102,8 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
 
   const controllers = config.NIM_API_KEYS.map(() => new AbortController());
   const attempts = config.NIM_API_KEYS.map((apiKey, index) =>
-    attemptReview(apiKey, body, index, false, controllers[index].signal).catch((error): Attempt => ({
-      error: error instanceof Error ? error.message : String(error),
-      retry: false
+    attemptReview(apiKey, body, index, controllers[index].signal).catch((error): Attempt => ({
+      error: error instanceof Error ? error.message : String(error)
     }))
   );
   try {

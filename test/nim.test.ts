@@ -8,6 +8,7 @@ process.env.NIM_BASE_URL = "https://nim.example.test/v1";
 process.env.NIM_API_KEY_1 = "primary";
 process.env.NIM_API_KEY_2 = "fallback";
 process.env.NIM_MODEL = "test-model";
+process.env.NIM_TIMEOUT_MS = "5";
 
 const { reviewDiff } = await import("../src/nim.js");
 
@@ -62,4 +63,18 @@ test("returns the first available review", async () => {
   assert.equal(result.score, 87);
   assert.ok(Date.now() - startedAt < 250);
   assert.equal(primarySignal?.aborted, true);
+});
+
+test("reports timeout when all keys abort", async () => {
+  globalThis.fetch = async (_input, init) => new Promise<Response>((_resolve, reject) => {
+    (init?.signal as AbortSignal).addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+  });
+
+  await assert.rejects(reviewDiff("diff"), /timed out after 5ms/);
+});
+
+test("aggregates non-timeout errors from all keys", async () => {
+  globalThis.fetch = async () => { throw new Error("offline"); };
+
+  await assert.rejects(reviewDiff("diff"), /offline.*offline/);
 });
