@@ -52,6 +52,26 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): 
   }
 }
 
+type Attempt = { review?: NimReview; error?: string; retry: boolean };
+
+/** Performs one NIM attempt and reports whether the next key should be used. */
+async function attemptReview(apiKey: string, body: unknown, keyIndex: number, hasFallback: boolean): Promise<Attempt> {
+  const response = await requestWithKey(apiKey, body, keyIndex);
+  if (!response.ok) {
+    const responseBody = (await response.text()).slice(0, 1000);
+    return {
+      error: `NIM key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`,
+      retry: hasFallback && shouldFailOver(response.status)
+    };
+  }
+
+  const payload: unknown = await response.json();
+  const text = (payload as { choices?: Array<{ message?: { content?: unknown } }> })
+    .choices?.[0]?.message?.content;
+  if (typeof text !== "string") throw new Error(`Unexpected NIM response shape from key #${keyIndex + 1}`);
+  return { review: reviewSchema.parse(extractJson(text)), retry: false };
+}
+
 /** Reviews a pull-request diff and returns the validated NIM result. */
 export async function reviewDiff(diff: string): Promise<NimReview> {
   const maxChars = 120_000;
@@ -80,32 +100,22 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
   const errors: string[] = [];
   for (let index = 0; index < config.NIM_API_KEYS.length; index++) {
     const apiKey = config.NIM_API_KEYS[index];
-    let response: Response;
+    const hasFallback = index + 1 < config.NIM_API_KEYS.length;
+    let attempt: Attempt;
     try {
-      response = await requestWithKey(apiKey, body, index);
+      attempt = await attemptReview(apiKey, body, index, hasFallback);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
-      if (index + 1 < config.NIM_API_KEYS.length) {
+      if (hasFallback) {
         console.warn(`NIM key #${index + 1} failed at network level; trying fallback key.`);
         continue;
       }
       break;
     }
-
-    if (!response.ok) {
-      const responseBody = (await response.text()).slice(0, 1000);
-      errors.push(`NIM key #${index + 1}: HTTP ${response.status} ${responseBody}`);
-      if (shouldFailOver(response.status) && index + 1 < config.NIM_API_KEYS.length) {
-        console.warn(`NIM key #${index + 1} returned ${response.status}; trying fallback key.`);
-        continue;
-      }
-      break;
-    }
-
-    const payload: any = await response.json();
-    const text = payload?.choices?.[0]?.message?.content;
-    if (typeof text !== "string") throw new Error(`Unexpected NIM response shape from key #${index + 1}`);
-    return reviewSchema.parse(extractJson(text));
+    if (attempt.review) return attempt.review;
+    errors.push(attempt.error ?? `NIM key #${index + 1} failed.`);
+    if (!attempt.retry) break;
+    console.warn(`NIM key #${index + 1} returned a failover status; trying fallback key.`);
   }
 
   throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
