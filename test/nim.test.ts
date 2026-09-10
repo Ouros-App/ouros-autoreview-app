@@ -44,3 +44,19 @@ test("fails over to the second key on 429", async () => {
   assert.equal(result.score, 88);
   assert.deepEqual(keys, ["Bearer primary", "Bearer fallback"]);
 });
+
+test("returns the first available review", async () => {
+  globalThis.fetch = async (_input, init) => {
+    const authorization = (init?.headers as Record<string, string>).authorization;
+    if (authorization === "Bearer primary") {
+      return new Promise<Response>(resolve => setTimeout(() => resolve(response(86)), 500));
+    }
+    return response(87);
+  };
+
+  const startedAt = Date.now();
+  const result = await reviewDiff("diff");
+
+  assert.equal(result.score, 87);
+  assert.ok(Date.now() - startedAt < 250);
+});

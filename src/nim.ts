@@ -105,15 +105,21 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     ]
   };
 
-  const attempts = await Promise.all(config.NIM_API_KEYS.map((apiKey, index) =>
+  const attempts = config.NIM_API_KEYS.map((apiKey, index) =>
     attemptReview(apiKey, body, index, false).catch((error): Attempt => ({
       error: error instanceof Error ? error.message : String(error),
       retry: false
     }))
-  ));
-  const review = attempts.find(attempt => attempt.review)?.review;
-  if (review) return review;
-
-  const errors = attempts.map(attempt => attempt.error ?? "NIM key failed.");
-  throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
+  );
+  try {
+    return await Promise.any(attempts.map(async attemptPromise => {
+      const attempt = await attemptPromise;
+      if (attempt.review) return attempt.review;
+      throw new Error(attempt.error ?? "NIM key failed.");
+    }));
+  } catch {
+    const results = await Promise.all(attempts);
+    const errors = results.map(attempt => attempt.error ?? "NIM key failed.");
+    throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
+  }
 }
