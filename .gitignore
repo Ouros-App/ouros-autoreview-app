@@ -1,14 +1,5 @@
-# Environment
-.env
-.env.*
-
-# Build artifacts
+node_modules/
 dist/
-build/
-tmp/
-temp/
-
-# Editor and OS files
-.DS_Store
-.idea/
-.vscode/
+coverage/
+.env
+*.log
