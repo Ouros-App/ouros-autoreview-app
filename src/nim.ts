@@ -35,16 +35,17 @@ function shouldFailOver(status: number): boolean {
 }
 
 /** Sends one review request to NIM with a bounded timeout. */
-async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): Promise<Response> {
+async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.NIM_TIMEOUT_MS);
+  const signal = AbortSignal.any([parentSignal, controller.signal]);
 
   try {
     return await fetch(`${config.NIM_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal
     });
   } catch (error) {
     const message = error instanceof Error && error.name === "AbortError"
@@ -59,8 +60,8 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): 
 type Attempt = { review?: NimReview; error?: string; retry: boolean };
 
 /** Performs one NIM attempt and reports whether the next key should be used. */
-async function attemptReview(apiKey: string, body: unknown, keyIndex: number, hasFallback: boolean): Promise<Attempt> {
-  const response = await requestWithKey(apiKey, body, keyIndex);
+async function attemptReview(apiKey: string, body: unknown, keyIndex: number, hasFallback: boolean, signal: AbortSignal): Promise<Attempt> {
+  const response = await requestWithKey(apiKey, body, keyIndex, signal);
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1000);
     return {
@@ -105,18 +106,21 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     ]
   };
 
+  const controllers = config.NIM_API_KEYS.map(() => new AbortController());
   const attempts = config.NIM_API_KEYS.map((apiKey, index) =>
-    attemptReview(apiKey, body, index, false).catch((error): Attempt => ({
+    attemptReview(apiKey, body, index, false, controllers[index].signal).catch((error): Attempt => ({
       error: error instanceof Error ? error.message : String(error),
       retry: false
     }))
   );
   try {
-    return await Promise.any(attempts.map(async attemptPromise => {
+    const review = await Promise.any(attempts.map(async attemptPromise => {
       const attempt = await attemptPromise;
       if (attempt.review) return attempt.review;
       throw new Error(attempt.error ?? "NIM key failed.");
     }));
+    controllers.forEach(controller => controller.abort());
+    return review;
   } catch {
     const results = await Promise.all(attempts);
     const errors = results.map(attempt => attempt.error ?? "NIM key failed.");

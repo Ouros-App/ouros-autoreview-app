@@ -46,9 +46,11 @@ test("fails over to the second key on 429", async () => {
 });
 
 test("returns the first available review", async () => {
+  let primarySignal: AbortSignal | undefined;
   globalThis.fetch = async (_input, init) => {
     const authorization = (init?.headers as Record<string, string>).authorization;
     if (authorization === "Bearer primary") {
+      primarySignal = init?.signal as AbortSignal;
       return new Promise<Response>(resolve => setTimeout(() => resolve(response(86)), 500));
     }
     return response(87);
@@ -59,4 +61,5 @@ test("returns the first available review", async () => {
 
   assert.equal(result.score, 87);
   assert.ok(Date.now() - startedAt < 250);
+  assert.equal(primarySignal?.aborted, true);
 });
