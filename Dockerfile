@@ -11,7 +11,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
-COPY --from=build /app/dist ./dist
+COPY --from=build /app/build ./build
 USER node
 EXPOSE 8080
-CMD ["node", "dist/server.js"]
+CMD ["node", "build/server.js"]
