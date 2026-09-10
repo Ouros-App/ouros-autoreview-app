@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "c8 --reporter=lcov --reporter=text node --import tsx --test test/nim.test.ts"
   },
   "dependencies": {
     "@infisical/sdk": "^5.0.2",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.1",
+    "c8": "^12.0.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

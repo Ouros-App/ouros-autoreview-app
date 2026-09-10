@@ -104,6 +104,18 @@ jobs:
         run: |
           test -f README.md
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check and test
+        run: npm run check && npm test
+
   sonarcloud:
     name: sonarcloud
     runs-on: ubuntu-latest
@@ -126,6 +138,10 @@ jobs:
             echo "sonar.organization=${SONAR_ORGANIZATION:-$owner}"
             echo "sonar.projectKey=${SONAR_PROJECT_KEY:-${owner}_${repo}}"
             echo "sonar.sources=."
+            echo "sonar.tests=test"
+            echo "sonar.test.inclusions=test/**/*.test.ts"
+            echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info"
+            echo "sonar.coverage.exclusions=src/server.ts,src/github.ts,src/review.ts,src/secrets.ts"
             echo "sonar.exclusions=.git/**,.github/**,dist/**,build/**"
             if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
               echo "sonar.branch.name=main"
