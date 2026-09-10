@@ -27,7 +27,7 @@ test("reviews a diff with the primary key", async () => {
   const result = await reviewDiff("diff");
 
   assert.equal(result.score, 91);
-  assert.deepEqual(keys, ["Bearer primary"]);
+  assert.deepEqual(keys, ["Bearer primary", "Bearer fallback"]);
 });
 
 test("fails over to the second key on 429", async () => {
