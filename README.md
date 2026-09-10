@@ -43,6 +43,21 @@ NIM_API_KEY_2=nvapi-fallback-...
 
 The bot tries key #1 first. It automatically switches to key #2 if the first request gets `429`, `401/403`, `408`, a `5xx`, a timeout, or a network failure. A successful request is not duplicated. `NIM_API_KEY` is still accepted as a legacy alias for key #1.
 
+## Infisical
+
+The service loads runtime secrets from Infisical using Universal Auth. Configure these variables on Discloud:
+
+```env
+INFISICAL_SITE_URL=https://app.infisical.com
+INFISICAL_CLIENT_ID=...
+INFISICAL_CLIENT_SECRET=...
+INFISICAL_PROJECT_ID=...
+INFISICAL_ENVIRONMENT=prod
+INFISICAL_SECRET_PATH=/
+```
+
+Store the GitHub and NVIDIA variables as secrets in the selected Infisical project/environment. For local development, omit the Infisical variables and fill `.env` directly.
+
 ## Run
 
 ```bash

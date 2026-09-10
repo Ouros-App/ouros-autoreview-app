@@ -1,7 +1,11 @@
 import express from "express";
-import { config } from "./config.js";
-import { canRunAutoReview, installationOctokit, verifyWebhookSignature } from "./github.js";
-import { runAutoReview } from "./review.js";
+import { loadSecrets } from "./secrets.js";
+
+await loadSecrets();
+
+const { config } = await import("./config.js");
+const { canRunAutoReview, installationOctokit, verifyWebhookSignature } = await import("./github.js");
+const { runAutoReview } = await import("./review.js");
 
 const app = express();
 app.use(express.raw({ type: "application/json", limit: "2mb" }));

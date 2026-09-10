@@ -10,6 +10,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@infisical/sdk": "^5.0.2",
     "@octokit/auth-app": "^8.0.0",
     "@octokit/rest": "^22.0.0",
     "dotenv": "^17.2.2",
