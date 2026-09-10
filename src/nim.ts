@@ -47,7 +47,10 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): 
       signal: controller.signal
     });
   } catch (error) {
-    throw new Error(`NIM key #${keyIndex + 1} network request failed: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error && error.name === "AbortError"
+      ? `timed out after ${config.NIM_TIMEOUT_MS}ms`
+      : `network request failed: ${error instanceof Error ? error.message : String(error)}`;
+    throw new Error(`NIM key #${keyIndex + 1} ${message}`);
   } finally {
     clearTimeout(timeout);
   }
@@ -102,26 +105,15 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     ]
   };
 
-  const errors: string[] = [];
-  for (let index = 0; index < config.NIM_API_KEYS.length; index++) {
-    const apiKey = config.NIM_API_KEYS[index];
-    const hasFallback = index + 1 < config.NIM_API_KEYS.length;
-    let attempt: Attempt;
-    try {
-      attempt = await attemptReview(apiKey, body, index, hasFallback);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-      if (hasFallback) {
-        console.warn(`NIM key #${index + 1} failed at network level; trying fallback key.`);
-        continue;
-      }
-      break;
-    }
-    if (attempt.review) return attempt.review;
-    errors.push(attempt.error ?? `NIM key #${index + 1} failed.`);
-    if (!attempt.retry) break;
-    console.warn(`NIM key #${index + 1} returned a failover status; trying fallback key.`);
-  }
+  const attempts = await Promise.all(config.NIM_API_KEYS.map((apiKey, index) =>
+    attemptReview(apiKey, body, index, false).catch((error): Attempt => ({
+      error: error instanceof Error ? error.message : String(error),
+      retry: false
+    }))
+  ));
+  const review = attempts.find(attempt => attempt.review)?.review;
+  if (review) return review;
 
+  const errors = attempts.map(attempt => attempt.error ?? `NIM key failed.`);
   throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
 }
