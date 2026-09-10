@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node build/server.js",
+    "start": "tsx src/server.ts",
     "check": "tsc --noEmit",
     "test": "c8 --reporter=lcov --reporter=text node --import tsx --test test/nim.test.ts"
   },

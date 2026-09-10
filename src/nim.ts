@@ -10,7 +10,8 @@ const reviewSchema = z.object({
     line: z.number().int().positive().optional(),
     severity: z.enum(["info", "low", "medium", "high", "critical"]),
     category: z.string().min(1),
-    message: z.string().min(1).max(1200)
+    message: z.string().min(1).max(1200),
+    suggestion: z.string().min(1).max(1200).optional()
   })).max(100)
 });
 
@@ -86,11 +87,15 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
         content: [
           "You are a conservative pull-request code reviewer.",
           "Review ONLY the supplied diff.",
+          "Report only problems introduced by changed lines; do not report unrelated pre-existing code.",
           "Prioritize correctness, security, data loss, concurrency, auth, validation, migrations, API compatibility and tests.",
           "Do not lower a score for pure style preferences.",
           "A score >= 85 means the change is safe enough to approve if external gates also pass.",
           "Any high or critical finding must make the score lower than 85.",
-          "Return JSON only with: score:number, summary:string, findings:[{path,line?,severity,category,message}]."
+          "For each real problem, identify the exact changed file and line from the diff hunk; do not invent a line.",
+          "Explain why the line is wrong, its concrete impact, and the smallest safe correction.",
+          "Sort findings by severity, with critical and high first.",
+          "Return JSON only with: score:number, summary:string, findings:[{path,line?,severity,category,message,suggestion?}]."
         ].join(" ")
       },
       { role: "user", content: `Review this pull-request diff:\n\n${clipped}` }

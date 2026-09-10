@@ -4,7 +4,7 @@ import { loadSecrets } from "./secrets.js";
 await loadSecrets();
 
 const { config } = await import("./config.js");
-const { canRunAutoReview, installationOctokit, verifyWebhookSignature } = await import("./github.js");
+const { canRunAutoReview, createComment, installationOctokit, verifyWebhookSignature } = await import("./github.js");
 const { runAutoReview } = await import("./review.js");
 
 const app = express();
@@ -40,8 +40,9 @@ app.post("/webhooks/github", async (req, res) => {
 
   const login = String(payload.comment?.user?.login ?? "");
   if (!login) return res.status(403).json({ error: "comment author is not authorized" });
+  let octokit: Awaited<ReturnType<typeof installationOctokit>>;
   try {
-    const octokit = await installationOctokit(ctx.installationId);
+    octokit = await installationOctokit(ctx.installationId);
     if (!(await canRunAutoReview(octokit, ctx.owner, ctx.repo, login))) {
       return res.status(403).json({ error: "comment author is not authorized" });
     }
@@ -50,6 +51,17 @@ app.post("/webhooks/github", async (req, res) => {
   }
 
   res.status(202).json({ accepted: true });
+
+  try {
+    await createComment(
+      octokit,
+      ctx,
+      "⏳ Ouros Auto Approval iniciou a revisão desta PR. Vou publicar a decisão assim que todos os gates terminarem."
+    );
+  } catch (error) {
+    console.error("review start comment failed", { ctx, error });
+  }
+
   try { await runAutoReview(ctx); }
   catch (error) { console.error("auto-review failed", { ctx, error }); }
 });

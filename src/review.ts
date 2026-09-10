@@ -8,11 +8,11 @@ import {
   installationOctokit
 } from "./github.js";
 import { reviewDiff } from "./nim.js";
-import type { PullContext } from "./types.js";
+import type { NimReview, PullContext } from "./types.js";
 
 /** Formats the decision and gate results for a pull-request comment or review. */
-function formatResult(args: { approved: boolean; score?: number; summary?: string; blockers: string[]; warnings: string[]; sha: string; }) {
-  const { approved, score, summary, blockers, warnings, sha } = args;
+function formatResult(args: { approved: boolean; score?: number; summary?: string; findings: NimReview["findings"]; blockers: string[]; warnings: string[]; sha: string; }) {
+  const { approved, score, summary, findings, blockers, warnings, sha } = args;
   const lines = [
     `## 🤖 Ouros Auto Approval`,
     "",
@@ -21,6 +21,13 @@ function formatResult(args: { approved: boolean; score?: number; summary?: strin
     `**Commit:** \`${sha.slice(0, 12)}\``
   ];
   if (summary) lines.push("", summary);
+  if (findings.length) {
+    lines.push("", "### Findings", ...findings.map(f => {
+      const location = f.line ? `\`${f.path}:${f.line}\`` : `\`${f.path}\``;
+      const suggestion = f.suggestion ? `\n  - **Correction:** ${f.suggestion}` : "";
+      return `- **${f.severity.toUpperCase()} · ${f.category} · ${location}** ${f.message}${suggestion}`;
+    }));
+  }
   if (blockers.length) lines.push("", "### Blockers", ...blockers.map(v => `- ${v}`));
   if (warnings.length) lines.push("", "### Warnings", ...warnings.map(v => `- ${v}`));
   return lines.join("\n");
@@ -57,7 +64,7 @@ export async function runAutoReview(ctx: PullContext) {
   const { data: latestPull } = await octokit.pulls.get({ owner: ctx.owner, repo: ctx.repo, pull_number: ctx.pullNumber });
   if (latestPull.head.sha !== initialSha) blockers.push("New commits were pushed while the bot was reviewing. Run /auto-review again.");
 
-  const body = formatResult({ approved: blockers.length === 0, score: nim?.score, summary: nim?.summary, blockers, warnings, sha: initialSha });
+  const body = formatResult({ approved: blockers.length === 0, score: nim?.score, summary: nim?.summary, findings: nim?.findings ?? [], blockers, warnings, sha: initialSha });
   if (blockers.length === 0) {
     await createApproval(octokit, ctx, initialSha, body);
     return { approved: true, body };
