@@ -127,6 +127,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate coverage
+        run: npm test
+
       - name: Configure SonarCloud
         env:
           SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
