@@ -6,6 +6,7 @@ export interface Finding {
   severity: Severity;
   category: string;
   message: string;
+  suggestion?: string;
 }
 
 export interface NimReview {
