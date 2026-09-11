@@ -78,3 +78,16 @@ test("aggregates non-timeout errors from all keys", async () => {
 
   await assert.rejects(reviewDiff("diff"), /offline.*offline/);
 });
+
+test("reviews a large diff in bounded chunks", async () => {
+  const bodies: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(String(init?.body));
+    return response();
+  };
+
+  await reviewDiff("x".repeat(40_001));
+
+  assert.ok(bodies.length >= 3);
+  assert.ok(bodies.every(body => body.length < 30_000));
+});
