@@ -31,6 +31,7 @@ function extractJson(text: string): unknown {
 
 type ProviderConfig = (typeof config.AI_PROVIDERS)[number];
 const severityRank = { info: 1, low: 2, medium: 3, high: 4, critical: 5 } as const;
+const MAX_DIFF_CHARS = 8_000;
 
 /** Sends one review request with a bounded timeout. */
 async function requestWithKey(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
@@ -79,7 +80,7 @@ async function reviewWithProvider(diff: string, provider: ProviderConfig): Promi
   const body = {
     model: provider.model,
     temperature: 0.1,
-    max_tokens: 2048,
+    max_tokens: 1024,
     messages: [
       {
         role: "system",
@@ -163,7 +164,7 @@ async function reviewChunk(diff: string): Promise<NimReview> {
 /** Reviews every diff chunk without dropping large pull requests. */
 export async function reviewDiff(diff: string): Promise<NimReview> {
   const reviews: NimReview[] = [];
-  for (const chunk of splitDiff(diff, 20_000)) reviews.push(await reviewChunk(chunk));
+  for (const chunk of splitDiff(diff, MAX_DIFF_CHARS)) reviews.push(await reviewChunk(chunk));
 
   const findings = new Map<string, NimReview["findings"][number]>();
   for (const review of reviews) {
