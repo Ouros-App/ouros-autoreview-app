@@ -30,18 +30,26 @@ Subscribe to the **Issue comment** event and point the webhook to:
 https://your-domain.example/webhooks/github
 ```
 
-## Groq failover
+## Groq primary and NIM fallback
 
-The project uses Groq by default through its OpenAI-compatible endpoint at `{NIM_BASE_URL}/chat/completions`.
+The project uses Groq as the primary provider and NVIDIA NIM as fallback. Each provider has an independent endpoint, model, timeout and key set.
 
 Configure two independent Groq API keys:
 
 ```env
+GROQ_BASE_URL=https://api.groq.com/openai/v1
 GROQ_API_KEY_1=gsk-primary-...
 GROQ_API_KEY_2=gsk-fallback-...
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_TIMEOUT_MS=90000
+NIM_BASE_URL=https://integrate.api.nvidia.com/v1
+NIM_API_KEY_1=nvapi-primary-...
+NIM_API_KEY_2=nvapi-fallback-...
+NIM_MODEL=google/gemma-4-31b-it
+NIM_TIMEOUT_MS=90000
 ```
 
-The bot sends both keys in parallel, returns the first valid review and cancels the other request. `NIM_API_KEY_1`, `NIM_API_KEY_2` and `NIM_API_KEY` remain accepted as legacy aliases.
+The bot tries Groq first, sends its keys in parallel, returns the first valid review and cancels the other request. Only if all Groq keys fail does it try NIM the same way. `NIM_API_KEY_1`, `NIM_API_KEY_2` and `NIM_API_KEY` remain accepted as legacy aliases for NIM.
 
 ## Infisical
 

@@ -5,10 +5,10 @@ process.env.GITHUB_APP_ID = "1";
 process.env.GITHUB_PRIVATE_KEY = "key";
 process.env.GITHUB_WEBHOOK_SECRET = "1234567890123456";
 process.env.NIM_BASE_URL = "https://nim.example.test/v1";
-process.env.NIM_API_KEY_1 = "primary";
-process.env.NIM_API_KEY_2 = "fallback";
-process.env.NIM_MODEL = "test-model";
-process.env.NIM_TIMEOUT_MS = "5";
+process.env.GROQ_API_KEY_1 = "primary";
+process.env.GROQ_API_KEY_2 = "fallback";
+process.env.GROQ_MODEL = "test-model";
+process.env.GROQ_TIMEOUT_MS = "5";
 
 const { reviewDiff } = await import("../src/nim.js");
 

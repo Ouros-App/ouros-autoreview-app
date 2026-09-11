@@ -29,14 +29,16 @@ function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-/** Sends one review request to NIM with a bounded timeout. */
-async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
+type ProviderConfig = (typeof config.AI_PROVIDERS)[number];
+
+/** Sends one review request with a bounded timeout. */
+async function requestWithKey(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.NIM_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), provider.timeoutMs);
   const signal = AbortSignal.any([parentSignal, controller.signal]);
 
   try {
-    return await fetch(`${config.NIM_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
+    return await fetch(`${provider.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
@@ -44,9 +46,9 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, p
     });
   } catch (error) {
     const message = error instanceof Error && error.name === "AbortError"
-      ? `timed out after ${config.NIM_TIMEOUT_MS}ms`
+      ? `timed out after ${provider.timeoutMs}ms`
       : `network request failed: ${error instanceof Error ? error.message : String(error)}`;
-    throw new Error(`NIM key #${keyIndex + 1} ${message}`);
+    throw new Error(`${provider.name} key #${keyIndex + 1} ${message}`);
   } finally {
     clearTimeout(timeout);
   }
@@ -55,12 +57,12 @@ async function requestWithKey(apiKey: string, body: unknown, keyIndex: number, p
 type Attempt = { review?: NimReview; error?: string };
 
 /** Performs one NIM attempt and reports its review or error. */
-async function attemptReview(apiKey: string, body: unknown, keyIndex: number, signal: AbortSignal): Promise<Attempt> {
-  const response = await requestWithKey(apiKey, body, keyIndex, signal);
+async function attemptReview(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, signal: AbortSignal): Promise<Attempt> {
+  const response = await requestWithKey(provider, apiKey, body, keyIndex, signal);
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1000);
     return {
-      error: `NIM key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`
+      error: `${provider.name} key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`
     };
   }
 
@@ -71,12 +73,12 @@ async function attemptReview(apiKey: string, body: unknown, keyIndex: number, si
   return { review: reviewSchema.parse(extractJson(text)) };
 }
 
-/** Reviews a pull-request diff and returns the validated NIM result. */
-export async function reviewDiff(diff: string): Promise<NimReview> {
+/** Reviews a pull-request diff with one provider and its key failover. */
+async function reviewWithProvider(diff: string, provider: ProviderConfig): Promise<NimReview> {
   const maxChars = 120_000;
   const clipped = diff.length > maxChars ? `${diff.slice(0, maxChars)}\n\n[DIFF TRUNCATED]` : diff;
   const body = {
-    model: config.NIM_MODEL,
+    model: provider.model,
     temperature: 0.1,
     max_tokens: 4096,
     messages: [
@@ -100,9 +102,10 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     ]
   };
 
-  const controllers = config.NIM_API_KEYS.map(() => new AbortController());
-  const attempts = config.NIM_API_KEYS.map((apiKey, index) =>
-    attemptReview(apiKey, body, index, controllers[index].signal).catch((error): Attempt => ({
+  if (!provider.apiKeys.length) throw new Error(`${provider.name} has no configured API keys.`);
+  const controllers = provider.apiKeys.map(() => new AbortController());
+  const attempts = provider.apiKeys.map((apiKey, index) =>
+    attemptReview(provider, apiKey, body, index, controllers[index].signal).catch((error): Attempt => ({
       error: error instanceof Error ? error.message : String(error)
     }))
   );
@@ -117,6 +120,19 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
   } catch {
     const results = await Promise.all(attempts);
     const errors = results.map(attempt => attempt.error ?? "NIM key failed.");
-    throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
+    throw new Error(`All configured ${provider.name} credentials failed. ${errors.join(" | ")}`);
   }
+}
+
+/** Reviews a pull-request diff with Groq first and NIM as fallback. */
+export async function reviewDiff(diff: string): Promise<NimReview> {
+  const errors: string[] = [];
+  for (const provider of config.AI_PROVIDERS) {
+    try {
+      return await reviewWithProvider(diff, provider);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new Error(`All AI providers failed. ${errors.join(" | ")}`);
 }
