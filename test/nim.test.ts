@@ -89,8 +89,8 @@ test("reviews a large diff in bounded chunks", async () => {
     return response();
   };
 
-  await reviewDiff(`${"a".repeat(20_000)}\n${"b".repeat(20_000)}\nc`);
+  await reviewDiff(`${"a".repeat(8_000)}\n${"b".repeat(8_000)}\nc`);
 
   assert.equal(chunks.size, 3);
-  assert.ok([...chunks].every(chunk => chunk.length <= 20_000));
+  assert.ok([...chunks].every(chunk => chunk.length <= 8_000));
 });
