@@ -5,9 +5,10 @@ process.env.GITHUB_APP_ID = "1";
 process.env.GITHUB_PRIVATE_KEY = "key";
 process.env.GITHUB_WEBHOOK_SECRET = "1234567890123456";
 process.env.NIM_BASE_URL = "https://nim.example.test/v1";
-process.env.NIM_API_KEY_1 = "primary";
-process.env.NIM_API_KEY_2 = "fallback";
-process.env.NIM_MODEL = "test-model";
+process.env.GROQ_API_KEY_1 = "primary";
+process.env.GROQ_API_KEY_2 = "fallback";
+process.env.GROQ_MODEL = "test-model";
+process.env.GROQ_TIMEOUT_MS = "5";
 
 const { reviewDiff } = await import("../src/nim.js");
 
@@ -27,7 +28,7 @@ test("reviews a diff with the primary key", async () => {
   const result = await reviewDiff("diff");
 
   assert.equal(result.score, 91);
-  assert.deepEqual(keys, ["Bearer primary"]);
+  assert.deepEqual(keys, ["Bearer primary", "Bearer fallback"]);
 });
 
 test("fails over to the second key on 429", async () => {
@@ -43,4 +44,37 @@ test("fails over to the second key on 429", async () => {
 
   assert.equal(result.score, 88);
   assert.deepEqual(keys, ["Bearer primary", "Bearer fallback"]);
+});
+
+test("returns the first available review", async () => {
+  let primarySignal: AbortSignal | undefined;
+  globalThis.fetch = async (_input, init) => {
+    const authorization = (init?.headers as Record<string, string>).authorization;
+    if (authorization === "Bearer primary") {
+      primarySignal = init?.signal as AbortSignal;
+      return new Promise<Response>(resolve => setTimeout(() => resolve(response(86)), 500));
+    }
+    return response(87);
+  };
+
+  const startedAt = Date.now();
+  const result = await reviewDiff("diff");
+
+  assert.equal(result.score, 87);
+  assert.ok(Date.now() - startedAt < 250);
+  assert.equal(primarySignal?.aborted, true);
+});
+
+test("reports timeout when all keys abort", async () => {
+  globalThis.fetch = async (_input, init) => new Promise<Response>((_resolve, reject) => {
+    (init?.signal as AbortSignal).addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+  });
+
+  await assert.rejects(reviewDiff("diff"), /timed out after 5ms/);
+});
+
+test("aggregates non-timeout errors from all keys", async () => {
+  globalThis.fetch = async () => { throw new Error("offline"); };
+
+  await assert.rejects(reviewDiff("diff"), /offline.*offline/);
 });

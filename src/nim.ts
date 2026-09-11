@@ -29,40 +29,40 @@ function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-/** Identifies HTTP statuses that should trigger the next NIM credential. */
-function shouldFailOver(status: number): boolean {
-  return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
-}
+type ProviderConfig = (typeof config.AI_PROVIDERS)[number];
 
-/** Sends one review request to NIM with a bounded timeout. */
-async function requestWithKey(apiKey: string, body: unknown, keyIndex: number): Promise<Response> {
+/** Sends one review request with a bounded timeout. */
+async function requestWithKey(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.NIM_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), provider.timeoutMs);
+  const signal = AbortSignal.any([parentSignal, controller.signal]);
 
   try {
-    return await fetch(`${config.NIM_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
+    return await fetch(`${provider.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal
     });
   } catch (error) {
-    throw new Error(`NIM key #${keyIndex + 1} network request failed: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error && error.name === "AbortError"
+      ? `timed out after ${provider.timeoutMs}ms`
+      : `network request failed: ${error instanceof Error ? error.message : String(error)}`;
+    throw new Error(`${provider.name} key #${keyIndex + 1} ${message}`);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-type Attempt = { review?: NimReview; error?: string; retry: boolean };
+type Attempt = { review?: NimReview; error?: string };
 
-/** Performs one NIM attempt and reports whether the next key should be used. */
-async function attemptReview(apiKey: string, body: unknown, keyIndex: number, hasFallback: boolean): Promise<Attempt> {
-  const response = await requestWithKey(apiKey, body, keyIndex);
+/** Performs one NIM attempt and reports its review or error. */
+async function attemptReview(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, signal: AbortSignal): Promise<Attempt> {
+  const response = await requestWithKey(provider, apiKey, body, keyIndex, signal);
   if (!response.ok) {
     const responseBody = (await response.text()).slice(0, 1000);
     return {
-      error: `NIM key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`,
-      retry: hasFallback && shouldFailOver(response.status)
+      error: `${provider.name} key #${keyIndex + 1}: HTTP ${response.status} ${responseBody}`
     };
   }
 
@@ -70,15 +70,15 @@ async function attemptReview(apiKey: string, body: unknown, keyIndex: number, ha
   const text = (payload as { choices?: Array<{ message?: { content?: unknown } }> })
     .choices?.[0]?.message?.content;
   if (typeof text !== "string") throw new Error(`Unexpected NIM response shape from key #${keyIndex + 1}`);
-  return { review: reviewSchema.parse(extractJson(text)), retry: false };
+  return { review: reviewSchema.parse(extractJson(text)) };
 }
 
-/** Reviews a pull-request diff and returns the validated NIM result. */
-export async function reviewDiff(diff: string): Promise<NimReview> {
+/** Reviews a pull-request diff with one provider and its key failover. */
+async function reviewWithProvider(diff: string, provider: ProviderConfig): Promise<NimReview> {
   const maxChars = 120_000;
   const clipped = diff.length > maxChars ? `${diff.slice(0, maxChars)}\n\n[DIFF TRUNCATED]` : diff;
   const body = {
-    model: config.NIM_MODEL,
+    model: provider.model,
     temperature: 0.1,
     max_tokens: 4096,
     messages: [
@@ -102,26 +102,37 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     ]
   };
 
+  if (!provider.apiKeys.length) throw new Error(`${provider.name} has no configured API keys.`);
+  const controllers = provider.apiKeys.map(() => new AbortController());
+  const attempts = provider.apiKeys.map((apiKey, index) =>
+    attemptReview(provider, apiKey, body, index, controllers[index].signal).catch((error): Attempt => ({
+      error: error instanceof Error ? error.message : String(error)
+    }))
+  );
+  try {
+    const review = await Promise.any(attempts.map(async attemptPromise => {
+      const attempt = await attemptPromise;
+      if (attempt.review) return attempt.review;
+      throw new Error(attempt.error ?? "NIM key failed.");
+    }));
+    controllers.forEach(controller => controller.abort());
+    return review;
+  } catch {
+    const results = await Promise.all(attempts);
+    const errors = results.map(attempt => attempt.error ?? "NIM key failed.");
+    throw new Error(`All configured ${provider.name} credentials failed. ${errors.join(" | ")}`);
+  }
+}
+
+/** Reviews a pull-request diff with Groq first and NIM as fallback. */
+export async function reviewDiff(diff: string): Promise<NimReview> {
   const errors: string[] = [];
-  for (let index = 0; index < config.NIM_API_KEYS.length; index++) {
-    const apiKey = config.NIM_API_KEYS[index];
-    const hasFallback = index + 1 < config.NIM_API_KEYS.length;
-    let attempt: Attempt;
+  for (const provider of config.AI_PROVIDERS) {
     try {
-      attempt = await attemptReview(apiKey, body, index, hasFallback);
+      return await reviewWithProvider(diff, provider);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
-      if (hasFallback) {
-        console.warn(`NIM key #${index + 1} failed at network level; trying fallback key.`);
-        continue;
-      }
-      break;
     }
-    if (attempt.review) return attempt.review;
-    errors.push(attempt.error ?? `NIM key #${index + 1} failed.`);
-    if (!attempt.retry) break;
-    console.warn(`NIM key #${index + 1} returned a failover status; trying fallback key.`);
   }
-
-  throw new Error(`All configured NIM credentials failed. ${errors.join(" | ")}`);
+  throw new Error(`All AI providers failed. ${errors.join(" | ")}`);
 }
