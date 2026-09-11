@@ -81,6 +81,8 @@ async function reviewWithProvider(diff: string, provider: ProviderConfig): Promi
     model: provider.model,
     temperature: 0.1,
     max_tokens: 1024,
+    response_format: { type: "json_object" },
+    ...(provider.name === "NIM" ? { chat_template_kwargs: { enable_thinking: false } } : {}),
     messages: [
       {
         role: "system",
