@@ -150,7 +150,7 @@ function splitDiff(diff: string, maxChars: number): string[] {
   return chunks.length ? chunks : [diff];
 }
 
-/** Reviews one diff chunk with Groq first and NIM as fallback. */
+/** Reviews one diff chunk with NIM first and Groq as fallback. */
 async function reviewChunk(diff: string): Promise<NimReview> {
   const errors: string[] = [];
   for (const provider of config.AI_PROVIDERS) {

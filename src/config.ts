@@ -37,8 +37,8 @@ export const config = {
   ...env,
   GITHUB_PRIVATE_KEY: env.GITHUB_PRIVATE_KEY.replaceAll(String.raw`\n`, "\n"),
   AI_PROVIDERS: [
-    { name: "Groq", baseUrl: env.GROQ_BASE_URL, model: env.GROQ_MODEL, timeoutMs: env.GROQ_TIMEOUT_MS, apiKeys: keys(env.GROQ_API_KEY_1, env.GROQ_API_KEY_2) },
-    { name: "NIM", baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL, timeoutMs: env.NIM_TIMEOUT_MS, apiKeys: keys(env.NIM_API_KEY_1 ?? env.NIM_API_KEY, env.NIM_API_KEY_2) }
+    { name: "NIM", baseUrl: env.NIM_BASE_URL, model: env.NIM_MODEL, timeoutMs: env.NIM_TIMEOUT_MS, apiKeys: keys(env.NIM_API_KEY_1 ?? env.NIM_API_KEY, env.NIM_API_KEY_2) },
+    { name: "Groq", baseUrl: env.GROQ_BASE_URL, model: env.GROQ_MODEL, timeoutMs: env.GROQ_TIMEOUT_MS, apiKeys: keys(env.GROQ_API_KEY_1, env.GROQ_API_KEY_2) }
   ],
   CODERABBIT_LOGINS: env.CODERABBIT_LOGINS.split(",").map((v: string) => v.trim().toLowerCase()).filter(Boolean),
   SONAR_IDENTIFIERS: env.SONAR_IDENTIFIERS.split(",").map((v: string) => v.trim().toLowerCase()).filter(Boolean)
