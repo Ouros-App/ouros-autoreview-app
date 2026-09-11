@@ -78,3 +78,19 @@ test("aggregates non-timeout errors from all keys", async () => {
 
   await assert.rejects(reviewDiff("diff"), /offline.*offline/);
 });
+
+test("reviews a large diff in bounded chunks", async () => {
+  const chunks = new Set<string>();
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+    const prefix = "Review this pull-request diff chunk:\n\n";
+    const content = body.messages[1].content;
+    chunks.add(content.startsWith(prefix) ? content.slice(prefix.length) : content);
+    return response();
+  };
+
+  await reviewDiff(`${"a".repeat(20_000)}\n${"b".repeat(20_000)}\nc`);
+
+  assert.equal(chunks.size, 3);
+  assert.ok([...chunks].every(chunk => chunk.length <= 20_000));
+});

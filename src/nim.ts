@@ -30,6 +30,7 @@ function extractJson(text: string): unknown {
 }
 
 type ProviderConfig = (typeof config.AI_PROVIDERS)[number];
+const severityRank = { info: 1, low: 2, medium: 3, high: 4, critical: 5 } as const;
 
 /** Sends one review request with a bounded timeout. */
 async function requestWithKey(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
@@ -75,12 +76,10 @@ async function attemptReview(provider: ProviderConfig, apiKey: string, body: unk
 
 /** Reviews a pull-request diff with one provider and its key failover. */
 async function reviewWithProvider(diff: string, provider: ProviderConfig): Promise<NimReview> {
-  const maxChars = 120_000;
-  const clipped = diff.length > maxChars ? `${diff.slice(0, maxChars)}\n\n[DIFF TRUNCATED]` : diff;
   const body = {
     model: provider.model,
     temperature: 0.1,
-    max_tokens: 4096,
+    max_tokens: 2048,
     messages: [
       {
         role: "system",
@@ -98,7 +97,7 @@ async function reviewWithProvider(diff: string, provider: ProviderConfig): Promi
           "Return JSON only with: score:number, summary:string, findings:[{path,line?,severity,category,message,suggestion?}]."
         ].join(" ")
       },
-      { role: "user", content: `Review this pull-request diff:\n\n${clipped}` }
+      { role: "user", content: `Review this pull-request diff chunk:\n\n${diff}` }
     ]
   };
 
@@ -124,8 +123,32 @@ async function reviewWithProvider(diff: string, provider: ProviderConfig): Promi
   }
 }
 
-/** Reviews a pull-request diff with Groq first and NIM as fallback. */
-export async function reviewDiff(diff: string): Promise<NimReview> {
+function splitDiff(diff: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let current = "";
+  for (const line of diff.split("\n")) {
+    if (line.length > maxChars) {
+      if (current) chunks.push(current);
+      current = "";
+      for (let index = 0; index < line.length; index += maxChars) {
+        chunks.push(line.slice(index, index + maxChars));
+      }
+      continue;
+    }
+    const next = current ? `${current}\n${line}` : line;
+    if (current && next.length > maxChars) {
+      chunks.push(current);
+      current = line;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [diff];
+}
+
+/** Reviews one diff chunk with Groq first and NIM as fallback. */
+async function reviewChunk(diff: string): Promise<NimReview> {
   const errors: string[] = [];
   for (const provider of config.AI_PROVIDERS) {
     try {
@@ -135,4 +158,25 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
     }
   }
   throw new Error(`All AI providers failed. ${errors.join(" | ")}`);
+}
+
+/** Reviews every diff chunk without dropping large pull requests. */
+export async function reviewDiff(diff: string): Promise<NimReview> {
+  const reviews: NimReview[] = [];
+  for (const chunk of splitDiff(diff, 20_000)) reviews.push(await reviewChunk(chunk));
+
+  const findings = new Map<string, NimReview["findings"][number]>();
+  for (const review of reviews) {
+    for (const finding of review.findings) {
+      const key = `${finding.path}:${finding.line ?? ""}:${finding.message}`;
+      findings.set(key, finding);
+    }
+  }
+  return {
+    score: Math.min(...reviews.map(review => review.score)),
+    summary: reviews.map(review => review.summary).join("\n\n").slice(0, 2000),
+    findings: [...findings.values()]
+      .sort((a, b) => severityRank[b.severity] - severityRank[a.severity])
+      .slice(0, 100)
+  };
 }
