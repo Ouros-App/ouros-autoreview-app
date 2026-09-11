@@ -75,12 +75,12 @@ async function attemptReview(provider: ProviderConfig, apiKey: string, body: unk
 
 /** Reviews a pull-request diff with one provider and its key failover. */
 async function reviewWithProvider(diff: string, provider: ProviderConfig): Promise<NimReview> {
-  const maxChars = 120_000;
+  const maxChars = 20_000;
   const clipped = diff.length > maxChars ? `${diff.slice(0, maxChars)}\n\n[DIFF TRUNCATED]` : diff;
   const body = {
     model: provider.model,
     temperature: 0.1,
-    max_tokens: 4096,
+    max_tokens: 2048,
     messages: [
       {
         role: "system",
