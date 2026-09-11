@@ -30,6 +30,7 @@ function extractJson(text: string): unknown {
 }
 
 type ProviderConfig = (typeof config.AI_PROVIDERS)[number];
+const severityRank = { info: 1, low: 2, medium: 3, high: 4, critical: 5 } as const;
 
 /** Sends one review request with a bounded timeout. */
 async function requestWithKey(provider: ProviderConfig, apiKey: string, body: unknown, keyIndex: number, parentSignal: AbortSignal): Promise<Response> {
@@ -174,6 +175,8 @@ export async function reviewDiff(diff: string): Promise<NimReview> {
   return {
     score: Math.min(...reviews.map(review => review.score)),
     summary: reviews.map(review => review.summary).join("\n\n").slice(0, 2000),
-    findings: [...findings.values()].slice(0, 100)
+    findings: [...findings.values()]
+      .sort((a, b) => severityRank[b.severity] - severityRank[a.severity])
+      .slice(0, 100)
   };
 }

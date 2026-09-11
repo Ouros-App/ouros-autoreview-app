@@ -80,14 +80,17 @@ test("aggregates non-timeout errors from all keys", async () => {
 });
 
 test("reviews a large diff in bounded chunks", async () => {
-  const bodies: string[] = [];
+  const chunks = new Set<string>();
   globalThis.fetch = async (_input, init) => {
-    bodies.push(String(init?.body));
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+    const prefix = "Review this pull-request diff chunk:\n\n";
+    const content = body.messages[1].content;
+    chunks.add(content.startsWith(prefix) ? content.slice(prefix.length) : content);
     return response();
   };
 
-  await reviewDiff("x".repeat(40_001));
+  await reviewDiff(`${"a".repeat(20_000)}\n${"b".repeat(20_000)}\nc`);
 
-  assert.ok(bodies.length >= 3);
-  assert.ok(bodies.every(body => body.length < 30_000));
+  assert.equal(chunks.size, 3);
+  assert.ok([...chunks].every(chunk => chunk.length <= 20_000));
 });
